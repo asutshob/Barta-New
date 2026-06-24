@@ -1,0 +1,6 @@
+{
+  "name": "Barta",
+  "description": "বার্তা (Barta) is a beautiful Instagram-like photo and video sharing social media app featuring 2-step signup, stories, reels, posts, likes, comments, and full localization in Bangla & English.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
