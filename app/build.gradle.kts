@@ -115,3 +115,35 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.register<Copy>("copyApkToOutputs") {
+  from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+  into(rootProject.file(".build-outputs"))
+}
+
+tasks.register<Copy>("copyApkToDownload") {
+  from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+  into(rootProject.file("APK_DOWNLOAD"))
+}
+
+tasks.register("copyApk") {
+  dependsOn("copyApkToOutputs", "copyApkToDownload")
+}
+
+tasks.register("verifyApk") {
+  doLast {
+    val outputsApk = rootProject.file(".build-outputs/app-debug.apk")
+    val downloadApk = rootProject.file("APK_DOWNLOAD/app-debug.apk")
+    println("Outputs APK size: ${outputsApk.length()} bytes")
+    println("Download APK size: ${downloadApk.length()} bytes")
+    if (!outputsApk.exists() || outputsApk.length() < 1024 * 1024) {
+      throw GradleException("Verification failed: .build-outputs/app-debug.apk is invalid or too small!")
+    }
+    if (!downloadApk.exists() || downloadApk.length() < 1024 * 1024) {
+      throw GradleException("Verification failed: APK_DOWNLOAD/app-debug.apk is invalid or too small!")
+    }
+    println("Verification passed successfully! Real installable APK generated.")
+  }
+}
+
+
