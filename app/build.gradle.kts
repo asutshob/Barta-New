@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -8,7 +10,7 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.barta.mrypqk"
@@ -18,6 +20,21 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  val keystoreFile = rootProject.file("debug.keystore")
+  if (!keystoreFile.exists()) {
+    val base64File = rootProject.file("debug.keystore.base64")
+    if (base64File.exists()) {
+      try {
+        val base64Content = base64File.readText().trim().replace("\n", "").replace("\r", "")
+        val decodedBytes = Base64.getDecoder().decode(base64Content)
+        keystoreFile.writeBytes(decodedBytes)
+        println("Successfully decoded debug.keystore from base64!")
+      } catch (e: Exception) {
+        println("Error decoding debug.keystore: ${e.message}")
+      }
+    }
   }
 
   signingConfigs {
@@ -117,13 +134,17 @@ dependencies {
 }
 
 tasks.register<Copy>("copyApkToOutputs") {
+  dependsOn("assembleDebug")
   from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
   into(rootProject.file(".build-outputs"))
+  outputs.upToDateWhen { false }
 }
 
 tasks.register<Copy>("copyApkToDownload") {
+  dependsOn("assembleDebug")
   from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
   into(rootProject.file("APK_DOWNLOAD"))
+  outputs.upToDateWhen { false }
 }
 
 tasks.register("copyApk") {
@@ -131,11 +152,19 @@ tasks.register("copyApk") {
 }
 
 tasks.register("verifyApk") {
+  dependsOn("copyApk")
+  notCompatibleWithConfigurationCache("Accesses project files directly")
   doLast {
     val outputsApk = rootProject.file(".build-outputs/app-debug.apk")
     val downloadApk = rootProject.file("APK_DOWNLOAD/app-debug.apk")
+    val debugKeystore = rootProject.file("debug.keystore")
     println("Outputs APK size: ${outputsApk.length()} bytes")
     println("Download APK size: ${downloadApk.length()} bytes")
+    println("Debug Keystore path: ${debugKeystore.absolutePath}")
+    println("Debug Keystore exists: ${debugKeystore.exists()}")
+    if (debugKeystore.exists()) {
+      println("Debug Keystore size: ${debugKeystore.length()} bytes")
+    }
     if (!outputsApk.exists() || outputsApk.length() < 1024 * 1024) {
       throw GradleException("Verification failed: .build-outputs/app-debug.apk is invalid or too small!")
     }
