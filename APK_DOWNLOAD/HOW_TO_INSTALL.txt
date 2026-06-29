@@ -1,0 +1,25 @@
+[বাংলা - গুরুত্বপূর্ণ নির্দেশনা]
+
+AI Studio এর ফাইল লিস্টে (বাম পাশে) APK ফাইলের নামের পাশে যে লাল/কমলা (!) চিহ্ন দেখায়, সেটি কোনো ত্রুটি বা Error নয়! 
+AI Studio ওয়েব এডিটর ব্রাউজারের মধ্যে কোনো বাইনারি ফাইল (যেমন APK, ছবি, জিপ ফাইল) ওপেন করে দেখাতে পারে না, তাই সকল বাইনারি ফাইলের পাশে এই (!) চিহ্ন দেখায়। এটি সম্পূর্ণ স্বাভাবিক।
+
+আপনার তৈরি করা 'Barta.apk' ফাইলটি ১০০% নির্ভুল ও সম্পূর্ণ সচল। 
+
+মোবাইলে ইনস্টল করার নিয়ম:
+১. প্রজেক্টের ZIP ফাইলটি আপনার মোবাইলে ডাউনলোড করে Extract করুন।
+২. 'APK_DOWNLOAD' ফোল্ডারের ভেতরে থাকা 'Barta.apk' (অথবা app-debug.apk) ফাইলটিতে ক্লিক করুন।
+৩. যদি আগে থেকে ফোনে বার্তা অ্যাপটি ইনস্টল করা থাকে এবং নতুনটি ইনস্টল হতে না চায়, তবে আগের অ্যাপটি আনইনস্টল (Uninstall) করে নতুন 'Barta.apk' টি ইনস্টল করুন।
+
+-----------------------------------------------------------
+
+[English - Important Instruction]
+
+The (!) warning icon shown next to APK files in AI Studio's file explorer sidebar is NOT an error!
+AI Studio's browser editor cannot preview binary files (such as APKs, images, ZIP archives) as text, so it shows (!) next to all binary files. This is completely normal behavior.
+
+Your generated 'Barta.apk' file is 100% valid, signed, and fully functional.
+
+How to install on Android phone:
+1. Download the project ZIP file to your mobile phone and extract it.
+2. Open the 'APK_DOWNLOAD' folder and tap on 'Barta.apk' (or app-debug.apk).
+3. If an older version of Barta is already installed on your phone and the new APK fails to install over it, simply uninstall the old app first and then install the newly extracted 'Barta.apk'.

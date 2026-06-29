@@ -100,10 +100,13 @@ class AppStrings(private val lang: Language) {
         get() = if (lang == Language.BANGLA) "অনুসারী" else "Followers"
 
     val following: String
-        get() = if (lang == Language.BANGLA) "অনুসরণকারী" else "Following"
+        get() = if (lang == Language.BANGLA) "ফলোয়িং" else "Following"
 
     val follow: String
-        get() = if (lang == Language.BANGLA) "অনুসরণ করুন" else "Follow"
+        get() = if (lang == Language.BANGLA) "ফলো করুন" else "Follow"
+
+    val followed: String
+        get() = if (lang == Language.BANGLA) "ফলো করা হয়েছে" else "Followed"
 
     val unfollow: String
         get() = if (lang == Language.BANGLA) "আনফলো করুন" else "Unfollow"

@@ -13,34 +13,34 @@ import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme =
   darkColorScheme(
-    primary = InstaPink,
-    secondary = AccentBlue,
-    tertiary = InstaOrange,
-    background = DarkBg,
-    surface = DarkSurface,
+    primary = XBlue,
+    secondary = XSubTextDark,
+    tertiary = XRepostGreen,
+    background = XDarkBg,
+    surface = XDarkSurface,
     onBackground = Color.White,
     onSurface = Color.White,
     onPrimary = Color.White,
-    outline = DarkBorder
+    outline = XDarkBorder
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = AccentBlue,
-    secondary = InstaPink,
-    tertiary = InstaOrange,
-    background = LightBg,
-    surface = LightSurface,
-    onBackground = Color.Black,
-    onSurface = Color.Black,
+    primary = XBlue,
+    secondary = XSubTextLight,
+    tertiary = XRepostGreen,
+    background = XLightBg,
+    surface = XLightSurface,
+    onBackground = Color(0xFF0F1419),
+    onSurface = Color(0xFF0F1419),
     onPrimary = Color.White,
-    outline = LightBorder
+    outline = XLightBorder
   )
 
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
-  // Disable dynamic color to maintain the custom Barta branding across all devices
+  // Disable dynamic color to maintain the custom Twitter/X Barta branding across all devices
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
@@ -57,3 +57,4 @@ fun MyApplicationTheme(
 
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
+

@@ -1,4 +1,5 @@
 import java.util.Base64
+import java.io.File
 
 plugins {
   alias(libs.plugins.android.application)
@@ -61,6 +62,8 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      isMinifyEnabled = false
+      isShrinkResources = false
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
@@ -133,31 +136,44 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
+val rootDirRef = rootDir
 tasks.register<Copy>("copyApkToOutputs") {
   dependsOn("assembleDebug")
   from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-  into(rootProject.file(".build-outputs"))
+  into(file("${rootDirRef}/.build-outputs"))
   outputs.upToDateWhen { false }
 }
 
 tasks.register<Copy>("copyApkToDownload") {
   dependsOn("assembleDebug")
   from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-  into(rootProject.file("APK_DOWNLOAD"))
+  into(file("${rootDirRef}/APK_DOWNLOAD"))
+  rename("app-debug.apk", "Barta.apk")
+  outputs.upToDateWhen { false }
+}
+
+tasks.register<Copy>("copyApkToDownloadDebug") {
+  dependsOn("assembleDebug")
+  from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+  into(file("${rootDirRef}/APK_DOWNLOAD"))
   outputs.upToDateWhen { false }
 }
 
 tasks.register("copyApk") {
-  dependsOn("copyApkToOutputs", "copyApkToDownload")
+  dependsOn("copyApkToOutputs", "copyApkToDownload", "copyApkToDownloadDebug")
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+  finalizedBy("copyApk")
 }
 
 tasks.register("verifyApk") {
   dependsOn("copyApk")
   notCompatibleWithConfigurationCache("Accesses project files directly")
   doLast {
-    val outputsApk = rootProject.file(".build-outputs/app-debug.apk")
-    val downloadApk = rootProject.file("APK_DOWNLOAD/app-debug.apk")
-    val debugKeystore = rootProject.file("debug.keystore")
+    val outputsApk = File(rootDirRef, ".build-outputs/app-debug.apk")
+    val downloadApk = File(rootDirRef, "APK_DOWNLOAD/Barta.apk")
+    val debugKeystore = File(rootDirRef, "debug.keystore")
     println("Outputs APK size: ${outputsApk.length()} bytes")
     println("Download APK size: ${downloadApk.length()} bytes")
     println("Debug Keystore path: ${debugKeystore.absolutePath}")
@@ -169,7 +185,7 @@ tasks.register("verifyApk") {
       throw GradleException("Verification failed: .build-outputs/app-debug.apk is invalid or too small!")
     }
     if (!downloadApk.exists() || downloadApk.length() < 1024 * 1024) {
-      throw GradleException("Verification failed: APK_DOWNLOAD/app-debug.apk is invalid or too small!")
+      throw GradleException("Verification failed: APK_DOWNLOAD/Barta.apk is invalid or too small!")
     }
     println("Verification passed successfully! Real installable APK generated.")
   }

@@ -14,7 +14,8 @@ data class User(
     val password: String,
     val followersCount: Int = 0,
     val followingCount: Int = 0,
-    val aboutSection: String = ""
+    val aboutSection: String = "",
+    val headerBanner: String = "" // Optional profile banner
 )
 
 @Entity(tableName = "posts")
@@ -25,14 +26,21 @@ data class Post(
     val userProfilePicture: String,
     val caption: String,
     val location: String,
-    val mediaPaths: String, // Comma-separated Base64 or local URIs
+    val mediaPaths: String, // Comma/colon separated Base64 or local URIs (up to 4 photos)
     val isVideo: Boolean = false,
     val likeCount: Int = 0,
     val commentCount: Int = 0,
+    val repostCount: Int = 0,
+    val viewCount: Int = 120,
+    val isRepost: Boolean = false,
+    val repostedByUsername: String? = null,
+    val repostedByUserFullName: String? = null,
+    val originalPostId: Int? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "comments")
+
 data class Comment(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val postId: Int,
