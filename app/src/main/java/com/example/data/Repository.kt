@@ -317,9 +317,19 @@ class BartaRepository(private val context: Context) {
         return notificationDao.getNotifications(currentUser.username)
     }
 
+    fun getUnreadNotificationCount(): Flow<Int> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(0)
+        return notificationDao.getUnreadCount(currentUser.username)
+    }
+
     suspend fun markNotificationsAsRead() {
         val currentUser = _currentUserState.value ?: return
         notificationDao.markAllAsRead(currentUser.username)
+    }
+
+    suspend fun clearAllNotifications() {
+        val currentUser = _currentUserState.value ?: return
+        notificationDao.clearAllNotifications(currentUser.username)
     }
 
     private suspend fun createNotification(recipient: String, type: String, postId: Int? = null, text: String) {
@@ -336,17 +346,160 @@ class BartaRepository(private val context: Context) {
         notificationDao.insertNotification(notification)
     }
 
+    // --- Report & Block & Mute System ---
+    suspend fun reportPost(postId: Int, reason: String, details: String = ""): Boolean {
+        val currentUser = _currentUserState.value ?: return false
+        val report = Report(
+            reporterUsername = currentUser.username,
+            targetType = "POST",
+            targetId = postId.toString(),
+            reason = reason,
+            details = details
+        )
+        db.reportDao().insertReport(report)
+        return true
+    }
+
+    suspend fun reportProfile(targetUsername: String, reason: String, details: String = ""): Boolean {
+        val currentUser = _currentUserState.value ?: return false
+        val report = Report(
+            reporterUsername = currentUser.username,
+            targetType = "PROFILE",
+            targetId = targetUsername,
+            reason = reason,
+            details = details
+        )
+        db.reportDao().insertReport(report)
+        return true
+    }
+
+    suspend fun blockUser(targetUsername: String) {
+        val currentUser = _currentUserState.value ?: return
+        val blockDao = db.blockDao()
+        val followDao = db.followDao()
+        blockDao.insertBlock(Block(blockerUsername = currentUser.username, blockedUsername = targetUsername))
+        // Remove follow connections in both directions
+        val f1 = followDao.getFollowRecord(currentUser.username, targetUsername)
+        if (f1 != null) followDao.deleteFollow(f1)
+        val f2 = followDao.getFollowRecord(targetUsername, currentUser.username)
+        if (f2 != null) followDao.deleteFollow(f2)
+    }
+
+    suspend fun unblockUser(targetUsername: String) {
+        val currentUser = _currentUserState.value ?: return
+        val blockDao = db.blockDao()
+        val record = blockDao.getBlockRecord(currentUser.username, targetUsername)
+        if (record != null) {
+            blockDao.deleteBlock(record)
+        }
+    }
+
+    fun isBlockedFlow(targetUsername: String): Flow<Boolean> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(false)
+        return db.blockDao().observeIsBlockedEitherWay(currentUser.username, targetUsername)
+    }
+
+    fun getBlockedUsernamesFlow(): Flow<List<String>> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(emptyList())
+        return db.blockDao().getBlockedUsernames(currentUser.username)
+    }
+
+    suspend fun muteUser(targetUsername: String) {
+        val currentUser = _currentUserState.value ?: return
+        val muteDao = db.muteDao()
+        muteDao.insertMute(Mute(muterUsername = currentUser.username, mutedUsername = targetUsername))
+    }
+
+    suspend fun unmuteUser(targetUsername: String) {
+        val currentUser = _currentUserState.value ?: return
+        val muteDao = db.muteDao()
+        val record = muteDao.getMuteRecord(currentUser.username, targetUsername)
+        if (record != null) {
+            muteDao.deleteMute(record)
+        }
+    }
+
+    fun isMutedFlow(targetUsername: String): Flow<Boolean> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(false)
+        return db.muteDao().observeIsMuted(currentUser.username, targetUsername)
+    }
+
+    fun getMutedUsernamesFlow(): Flow<List<String>> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(emptyList())
+        return db.muteDao().getMutedUsernames(currentUser.username)
+    }
+
+    suspend fun removeFollower(followerUsername: String) {
+        val currentUser = _currentUserState.value ?: return
+        FollowRepository(context).removeFollower(currentUser.username, followerUsername)
+    }
+
+    suspend fun toggleCommentLike(commentId: Int) {
+        val currentUser = _currentUserState.value ?: return
+        val commentLikeDao = db.commentLikeDao()
+        val commentDao = db.commentDao()
+        val existing = commentLikeDao.getCommentLike(currentUser.username, commentId)
+        val comment = commentDao.getCommentById(commentId) ?: return
+        if (existing != null) {
+            commentLikeDao.deleteCommentLike(existing)
+            commentDao.updateComment(comment.copy(likeCount = (comment.likeCount - 1).coerceAtLeast(0)))
+        } else {
+            commentLikeDao.insertCommentLike(CommentLike(username = currentUser.username, commentId = commentId))
+            commentDao.updateComment(comment.copy(likeCount = comment.likeCount + 1))
+        }
+    }
+
+    fun observeIsCommentLiked(commentId: Int): Flow<Boolean> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(false)
+        return db.commentLikeDao().observeIsCommentLiked(currentUser.username, commentId)
+    }
+
+    fun observeIsPostLiked(postId: Int): Flow<Boolean> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(false)
+        return likeDao.observeIsLiked(currentUser.username, postId)
+    }
+
+    fun observeIsPostSaved(postId: Int): Flow<Boolean> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(false)
+        return savedPostDao.observeIsSaved(currentUser.username, postId)
+    }
+
+    suspend fun incrementPostViewCount(postId: Int) {
+        postDao.incrementViewCount(postId)
+    }
+
+    fun getSuggestedUsers(): Flow<List<User>> {
+        val currentUser = _currentUserState.value ?: return MutableStateFlow(emptyList())
+        return userDao.getSuggestedUsers(currentUser.username)
+    }
+
+    suspend fun togglePrivateAccount(): Boolean {
+        val currentUser = _currentUserState.value ?: return false
+        val updated = currentUser.copy(isPrivate = !currentUser.isPrivate)
+        userDao.updateUser(updated)
+        _currentUserState.value = updated
+        return updated.isPrivate
+    }
+
+    suspend fun toggleRestrictAccount(): Boolean {
+        val currentUser = _currentUserState.value ?: return false
+        val updated = currentUser.copy(isRestricted = !currentUser.isRestricted)
+        userDao.updateUser(updated)
+        _currentUserState.value = updated
+        return updated.isRestricted
+    }
+
     // --- Image Compression & Helpers ---
-    fun compressBitmap(bitmap: Bitmap): String {
+    suspend fun compressBitmap(bitmap: Bitmap): String = withContext(Dispatchers.Default) {
         val outputStream = ByteArrayOutputStream()
         // Compress bitmap to 60% quality to fit easily as JPEG Base64
         bitmap.compress(Bitmap.CompressFormat.JPEG, 60, outputStream)
         val byteArray = outputStream.toByteArray()
-        return Base64.encodeToString(byteArray, Base64.DEFAULT)
+        Base64.encodeToString(byteArray, Base64.DEFAULT)
     }
 
-    fun decodeBase64ToBitmap(base64Str: String): Bitmap? {
-        return try {
+    suspend fun decodeBase64ToBitmap(base64Str: String): Bitmap? = withContext(Dispatchers.Default) {
+        try {
             val decodedBytes = Base64.decode(base64Str, Base64.DEFAULT)
             BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
         } catch (e: Exception) {

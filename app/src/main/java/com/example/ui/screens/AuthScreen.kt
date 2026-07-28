@@ -231,25 +231,19 @@ fun SignupStep1Content(viewModel: BartaViewModel, strings: AppStrings) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
             imageUri = it
-            try {
-                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val source = ImageDecoder.createSource(context.contentResolver, it)
-                    ImageDecoder.decodeBitmap(source)
-                } else {
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+            coroutineScope.launch {
+                val scaled = viewModel.decodeAndResizeUri(it, 300)
+                if (scaled != null) {
+                    imageBitmap = scaled
+                    tempProfilePic = scaled
                 }
-                // Pre-compress and scale to standard square size for social avatars
-                val scaled = Bitmap.createScaledBitmap(bitmap, 300, 300, true)
-                imageBitmap = scaled
-                tempProfilePic = scaled
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }

@@ -206,4 +206,112 @@ class AppStrings(private val lang: Language) {
 
     val savedPostsLabel: String
         get() = if (lang == Language.BANGLA) "সংরক্ষিত পোস্ট" else "Saved Posts"
+
+    val followBack: String
+        get() = if (lang == Language.BANGLA) "ফিরতি ফলো করুন" else "Follow Back"
+
+    val followersList: String
+        get() = if (lang == Language.BANGLA) "অনুসারী" else "Followers"
+
+    val followingList: String
+        get() = if (lang == Language.BANGLA) "ফলোয়িং" else "Following"
+
+    val emptyFollowers: String
+        get() = if (lang == Language.BANGLA) "কোনো অনুসারী নেই" else "No followers yet"
+
+    val emptyFollowing: String
+        get() = if (lang == Language.BANGLA) "কাউকে ফলো করছেন না" else "Not following anyone yet"
+
+    val confirmUnfollow: String
+        get() = if (lang == Language.BANGLA) "আপনি কি আনফলো করতে চান?" else "Do you want to unfollow?"
+
+    val report: String
+        get() = if (lang == Language.BANGLA) "রিপোর্ট করুন" else "Report"
+
+    val reportPost: String
+        get() = if (lang == Language.BANGLA) "পোস্ট রিপোর্ট করুন" else "Report Post"
+
+    val reportProfile: String
+        get() = if (lang == Language.BANGLA) "প্রোফাইল রিপোর্ট করুন" else "Report Profile"
+
+    val reportReason: String
+        get() = if (lang == Language.BANGLA) "রিপোর্টের কারণ নির্বাচন করুন" else "Select Report Reason"
+
+    val reasonSpam: String
+        get() = if (lang == Language.BANGLA) "স্প্যাম বা ভুয়া কনটেন্ট" else "Spam or Misleading"
+
+    val reasonHarassment: String
+        get() = if (lang == Language.BANGLA) "হয়রানি বা কটূক্তি" else "Harassment or Hate Speech"
+
+    val reasonInappropriate: String
+        get() = if (lang == Language.BANGLA) "অনুপযুক্ত বা আপত্তিকর কনটেন্ট" else "Inappropriate Content"
+
+    val reasonFake: String
+        get() = if (lang == Language.BANGLA) "নকল বা ভুয়া অ্যাকাউন্ট" else "Fake Account or Impersonation"
+
+    val reasonOther: String
+        get() = if (lang == Language.BANGLA) "অন্যান্য কারণ" else "Other Reason"
+
+    val reportSubmitted: String
+        get() = if (lang == Language.BANGLA) "আপনার রিপোর্ট জমা নেওয়া হয়েছে। ধন্যবাদ!" else "Report submitted. Thank you!"
+
+    val block: String
+        get() = if (lang == Language.BANGLA) "ব্লক করুন" else "Block"
+
+    val unblock: String
+        get() = if (lang == Language.BANGLA) "আনব্লক করুন" else "Unblock"
+
+    val blockUserConfirm: String
+        get() = if (lang == Language.BANGLA) "আপনি কি এই ইউজারকে ব্লক করতে চান? আপনারা একে অপরের পোস্ট দেখতে পাবেন না।" else "Are you sure you want to block this user? You will no longer see each other's posts."
+
+    val mute: String
+        get() = if (lang == Language.BANGLA) "মিউট করুন" else "Mute"
+
+    val unmute: String
+        get() = if (lang == Language.BANGLA) "আনমিউট করুন" else "Unmute"
+
+    val removeFollower: String
+        get() = if (lang == Language.BANGLA) "অনুসারী সরান" else "Remove Follower"
+
+    val confirmRemoveFollower: String
+        get() = if (lang == Language.BANGLA) "আপনি কি এই অনুসারীকে তালিকা থেকে সরাতে চান?" else "Remove this follower from your list?"
+
+    val privateAccount: String
+        get() = if (lang == Language.BANGLA) "প্রাইভেট অ্যাকাউন্ট" else "Private Account"
+
+    val privateAccountDesc: String
+        get() = if (lang == Language.BANGLA) "শুধুমাত্র আপনার অনুসারীরা আপনার পোস্ট দেখতে পাবে" else "Only your followers can see your posts"
+
+    val restrictAccount: String
+        get() = if (lang == Language.BANGLA) "অ্যাকাউন্ট রেস্ট্রিক্ট" else "Restrict Account"
+
+    val clearAll: String
+        get() = if (lang == Language.BANGLA) "সব মুছুন" else "Clear All"
+
+    val markAllRead: String
+        get() = if (lang == Language.BANGLA) "সব পড়া চিহ্নিত করুন" else "Mark All Read"
+
+    val notificationsEmpty: String
+        get() = if (lang == Language.BANGLA) "কোনো নতুন বিজ্ঞপ্তি নেই" else "No new notifications"
+
+    val share: String
+        get() = if (lang == Language.BANGLA) "শেয়ার করুন" else "Share"
+
+    val copyLink: String
+        get() = if (lang == Language.BANGLA) "লিংক কপি করুন" else "Copy Link"
+
+    val linkCopied: String
+        get() = if (lang == Language.BANGLA) "লিংক ক্লিপবোর্ডে কপি করা হয়েছে!" else "Link copied to clipboard!"
+
+    val views: String
+        get() = if (lang == Language.BANGLA) "বার দেখা হয়েছে" else "views"
+
+    val suggestedForYou: String
+        get() = if (lang == Language.BANGLA) "আপনার জন্য প্রস্তাবিত" else "Suggested for You"
+
+    val trendingHashtags: String
+        get() = if (lang == Language.BANGLA) "জনপ্রিয় হ্যাশট্যাগ" else "Trending Hashtags"
+
+    val submit: String
+        get() = if (lang == Language.BANGLA) "জমা দিন" else "Submit"
 }

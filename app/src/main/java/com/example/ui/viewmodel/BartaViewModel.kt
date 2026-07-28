@@ -22,12 +22,14 @@ sealed class SubScreen {
     object Home : SubScreen()
     object Explore : SubScreen()
     object CreatePost : SubScreen()
+    object Notifications : SubScreen()
     object Reels : SubScreen()
     object Profile : SubScreen()
 }
 
 class BartaViewModel(application: Application) : AndroidViewModel(application) {
     val repository = BartaRepository(application)
+    val followRepository = FollowRepository(application)
 
     // Screen Navigation
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Login)
@@ -42,11 +44,21 @@ class BartaViewModel(application: Application) : AndroidViewModel(application) {
     // Active States
     val currentUser = repository.currentUserState
 
+    val isPrivateAccount: StateFlow<Boolean> = currentUser
+        .map { it?.isPrivate ?: false }
+        .stateIn(viewModelScope, SharingStarted.Lazily, false)
+
+    val isRestrictedAccount: StateFlow<Boolean> = currentUser
+        .map { it?.isRestricted ?: false }
+        .stateIn(viewModelScope, SharingStarted.Lazily, false)
+
     // Live Lists
     val allPosts = repository.getAllPosts().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val activeStories = repository.getActiveStories().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val notifications = repository.getNotifications().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val unreadNotificationCount = repository.getUnreadNotificationCount().stateIn(viewModelScope, SharingStarted.Lazily, 0)
     val savedPosts = repository.getSavedPosts().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val suggestedUsers = repository.getSuggestedUsers().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // Search
     private val _searchQuery = MutableStateFlow("")
@@ -182,6 +194,39 @@ class BartaViewModel(application: Application) : AndroidViewModel(application) {
         return success
     }
 
+    // --- Image Safe Decoding & Resizing Helper ---
+    suspend fun decodeAndResizeUri(uri: android.net.Uri, maxDim: Int): Bitmap? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val context = getApplication<Application>().applicationContext
+            val bitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val source = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
+                android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                    decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                    decoder.isMutableRequired = true
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+            }
+            
+            val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+            
+            val width = softwareBitmap.width
+            val height = softwareBitmap.height
+            val scale = maxDim.toFloat() / Math.max(width, height).toFloat()
+            if (scale < 1.0f) {
+                val newWidth = (width * scale).toInt()
+                val newHeight = (height * scale).toInt()
+                Bitmap.createScaledBitmap(softwareBitmap, newWidth, newHeight, true)
+            } else {
+                softwareBitmap
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     // --- Post Actions ---
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
@@ -221,8 +266,14 @@ class BartaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleFollowUser(username: String) {
+        val cur = currentUser.value?.username ?: return
         viewModelScope.launch {
-            repository.toggleFollow(username)
+            val isFollowing = followRepository.isFollowing(cur, username).first()
+            if (isFollowing) {
+                followRepository.unfollowUser(cur, username)
+            } else {
+                followRepository.followUser(cur, username)
+            }
             // Refresh local user viewing if viewing profile
             val activeViewing = _viewingUserProfile.value
             if (activeViewing != null && activeViewing.username == username) {
@@ -234,8 +285,51 @@ class BartaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getFollowersCount(username: String): Flow<Int> = repository.getFollowersCount(username)
-    fun getFollowingCount(username: String): Flow<Int> = repository.getFollowingCount(username)
+    fun followUser(targetUsername: String) {
+        val cur = currentUser.value?.username ?: return
+        viewModelScope.launch {
+            followRepository.followUser(cur, targetUsername)
+            // Refresh local user viewing if viewing profile
+            val activeViewing = _viewingUserProfile.value
+            if (activeViewing != null && activeViewing.username == targetUsername) {
+                val updated = repository.observeUser(targetUsername).first()
+                if (updated != null) {
+                    _viewingUserProfile.value = updated
+                }
+            }
+        }
+    }
+
+    fun unfollowUser(targetUsername: String) {
+        val cur = currentUser.value?.username ?: return
+        viewModelScope.launch {
+            followRepository.unfollowUser(cur, targetUsername)
+            // Refresh local user viewing if viewing profile
+            val activeViewing = _viewingUserProfile.value
+            if (activeViewing != null && activeViewing.username == targetUsername) {
+                val updated = repository.observeUser(targetUsername).first()
+                if (updated != null) {
+                    _viewingUserProfile.value = updated
+                }
+            }
+        }
+    }
+
+    fun isFollowingFlow(username: String): Flow<Boolean> {
+        val cur = currentUser.value?.username ?: return flowOf(false)
+        return followRepository.isFollowing(cur, username)
+    }
+
+    fun getFollowersList(username: String): Flow<List<User>> {
+        return followRepository.getFollowers(username)
+    }
+
+    fun getFollowingList(username: String): Flow<List<User>> {
+        return followRepository.getFollowing(username)
+    }
+
+    fun getFollowersCount(username: String): Flow<Int> = followRepository.getFollowersCount(username)
+    fun getFollowingCount(username: String): Flow<Int> = followRepository.getFollowingCount(username)
 
     // --- Stories ---
     fun viewStoryForUser(username: String?) {
@@ -260,9 +354,95 @@ class BartaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Notifications ---
-    fun clearNotifications() {
+    fun markNotificationsAsRead() {
         viewModelScope.launch {
             repository.markNotificationsAsRead()
+        }
+    }
+
+    fun clearAllNotifications() {
+        viewModelScope.launch {
+            repository.clearAllNotifications()
+        }
+    }
+
+    // --- Report, Block, Mute & Privacy Actions ---
+    fun reportPost(postId: Int, reason: String, details: String = "") {
+        viewModelScope.launch {
+            repository.reportPost(postId, reason, details)
+        }
+    }
+
+    fun reportProfile(username: String, reason: String, details: String = "") {
+        viewModelScope.launch {
+            repository.reportProfile(username, reason, details)
+        }
+    }
+
+    fun blockUser(username: String) {
+        viewModelScope.launch {
+            repository.blockUser(username)
+            if (_viewingUserProfile.value?.username == username) {
+                _viewingUserProfile.value = null
+            }
+        }
+    }
+
+    fun unblockUser(username: String) {
+        viewModelScope.launch {
+            repository.unblockUser(username)
+        }
+    }
+
+    fun isBlockedFlow(username: String): Flow<Boolean> = repository.isBlockedFlow(username)
+
+    fun muteUser(username: String) {
+        viewModelScope.launch {
+            repository.muteUser(username)
+        }
+    }
+
+    fun unmuteUser(username: String) {
+        viewModelScope.launch {
+            repository.unmuteUser(username)
+        }
+    }
+
+    fun isMutedFlow(username: String): Flow<Boolean> = repository.isMutedFlow(username)
+
+    fun removeFollower(followerUsername: String) {
+        viewModelScope.launch {
+            repository.removeFollower(followerUsername)
+        }
+    }
+
+    fun toggleCommentLike(commentId: Int) {
+        viewModelScope.launch {
+            repository.toggleCommentLike(commentId)
+        }
+    }
+
+    fun observeIsCommentLiked(commentId: Int): Flow<Boolean> = repository.observeIsCommentLiked(commentId)
+
+    fun observeIsPostLiked(postId: Int): Flow<Boolean> = repository.observeIsPostLiked(postId)
+
+    fun observeIsPostSaved(postId: Int): Flow<Boolean> = repository.observeIsPostSaved(postId)
+
+    fun incrementPostViewCount(postId: Int) {
+        viewModelScope.launch {
+            repository.incrementPostViewCount(postId)
+        }
+    }
+
+    fun togglePrivateAccount() {
+        viewModelScope.launch {
+            repository.togglePrivateAccount()
+        }
+    }
+
+    fun toggleRestrictAccount() {
+        viewModelScope.launch {
+            repository.toggleRestrictAccount()
         }
     }
 

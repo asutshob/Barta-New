@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
 fun MainScreen(viewModel: BartaViewModel) {
     val currentSubScreen by viewModel.currentSubScreen.collectAsState()
     val currentLanguage by viewModel.currentLanguage.collectAsState()
-    val strings = AppStrings(currentLanguage)
+    val strings = remember(currentLanguage) { AppStrings(currentLanguage) }
 
     // Overlays
     val viewingUserProfile by viewModel.viewingUserProfile.collectAsState()
@@ -107,6 +107,7 @@ fun MainScreen(viewModel: BartaViewModel) {
                     SubScreen.Home -> HomeScreen(viewModel, strings)
                     SubScreen.Explore -> ExploreScreen(viewModel, strings)
                     SubScreen.CreatePost -> CreatePostScreen(viewModel, strings)
+                    SubScreen.Notifications -> NotificationsScreen(viewModel, strings)
                     SubScreen.Reels -> ReelsScreen(viewModel, strings)
                     SubScreen.Profile -> ProfileScreen(viewModel, viewModel.currentUser.value, strings, isOwnProfile = true)
                 }
@@ -201,9 +202,10 @@ fun BartaMediaLoader(
         if (mediaPath.length > 50 && !mediaPath.startsWith("http")) {
             // Attempt Base64 decode
             try {
-                val decoded = BartaDatabase.getDatabase(context).userDao() // trigger DB background loader
-                val decodedBytes = android.util.Base64.decode(mediaPath, android.util.Base64.DEFAULT)
-                val bitmap = android.graphics.BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+                val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    val decodedBytes = android.util.Base64.decode(mediaPath, android.util.Base64.DEFAULT)
+                    android.graphics.BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+                }
                 bitmapState = bitmap
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -368,6 +370,18 @@ fun MainBottomBar(
             modifier = Modifier.testTag("nav_create_tab")
         )
         NavigationBarItem(
+            selected = currentSubScreen == SubScreen.Notifications,
+            onClick = { onTabSelected(SubScreen.Notifications) },
+            icon = {
+                Icon(
+                    imageVector = if (currentSubScreen == SubScreen.Notifications) Icons.Filled.Notifications else Icons.Outlined.Notifications,
+                    contentDescription = strings.notifications
+                )
+            },
+            label = { Text(strings.notifications, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            modifier = Modifier.testTag("nav_notifications_tab")
+        )
+        NavigationBarItem(
             selected = currentSubScreen == SubScreen.Reels,
             onClick = { onTabSelected(SubScreen.Reels) },
             icon = { Icon(if (currentSubScreen == SubScreen.Reels) Icons.Filled.VideoLibrary else Icons.Outlined.VideoLibrary, contentDescription = strings.reels) },
@@ -389,8 +403,10 @@ fun MainBottomBar(
 fun HomeScreen(viewModel: BartaViewModel, strings: AppStrings) {
     val posts by viewModel.allPosts.collectAsState()
     val stories by viewModel.activeStories.collectAsState()
+    val suggestedUsers by viewModel.suggestedUsers.collectAsState()
 
-    val regularPosts = posts.filter { !it.isVideo }
+    val regularPosts = remember(posts) { posts.filter { !it.isVideo } }
+    val trendingHashtags = remember { listOf("#CoxsBazar", "#Sylhet", "#TechBD", "#BartaFeed", "#BanglaPost") }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -405,6 +421,116 @@ fun HomeScreen(viewModel: BartaViewModel, strings: AppStrings) {
             )
         }
 
+        // Trending Hashtags Row
+        item {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    text = strings.trendingHashtags,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(trendingHashtags) { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.clickable {
+                                viewModel.navigateToSubScreen(SubScreen.Explore)
+                            }
+                        ) {
+                            Text(
+                                text = tag,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Suggested Users Carousel (shown if available)
+        if (suggestedUsers.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    Text(
+                        text = strings.suggestedForYou,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(suggestedUsers) { user ->
+                            val isFollowing by viewModel.isFollowingFlow(user.username).collectAsState(initial = false)
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .clickable { viewModel.viewUserProfile(user) }
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surface)
+                                    ) {
+                                        BartaMediaLoader(mediaPath = user.profilePicture, modifier = Modifier.fillMaxSize())
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = user.fullName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "@${user.username}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = { viewModel.toggleFollowUser(user.username) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isFollowing) MaterialTheme.colorScheme.outline.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = if (isFollowing) strings.following else strings.follow,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isFollowing) MaterialTheme.colorScheme.onSurface else Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (regularPosts.isEmpty()) {
             item {
                 Box(
@@ -414,7 +540,7 @@ fun HomeScreen(viewModel: BartaViewModel, strings: AppStrings) {
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Outlined.PhotoCamera, contentDescription = null, size = 64.dp, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(strings.emptyPosts, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -444,19 +570,11 @@ fun StoryTraySection(viewModel: BartaViewModel, stories: List<Story>, strings: A
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            try {
-                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val source = ImageDecoder.createSource(context.contentResolver, it)
-                    ImageDecoder.decodeBitmap(source)
-                } else {
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, it)
-                }
-                val scaled = Bitmap.createScaledBitmap(bitmap, 480, 800, true) // vertical format
-                coroutineScope.launch {
+            coroutineScope.launch {
+                val scaled = viewModel.decodeAndResizeUri(it, 800)
+                if (scaled != null) {
                     viewModel.addStory(scaled, false, "শুভ মুহূর্ত!")
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -547,16 +665,29 @@ fun StoryTraySection(viewModel: BartaViewModel, stories: List<Story>, strings: A
 @Composable
 fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
     val coroutineScope = rememberCoroutineScope()
-    var isLiked by remember { mutableStateOf(false) }
-    var isSaved by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val currentUser by viewModel.currentUser.collectAsState()
+
+    val isLiked by viewModel.observeIsPostLiked(post.id).collectAsState(initial = false)
+    val isSaved by viewModel.observeIsPostSaved(post.id).collectAsState(initial = false)
+    val isMuted by viewModel.isMutedFlow(post.username).collectAsState(initial = false)
 
     // Animated heart floating for double tap
     var showHeartAnim by remember { mutableStateOf(false) }
 
+    // Dialog States
+    var showReportDialog by remember { mutableStateOf(false) }
+    var showBlockConfirmDialog by remember { mutableStateOf(false) }
+    var showEditCaptionDialog by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
     LaunchedEffect(post.id) {
-        isLiked = viewModel.isPostLiked(post.id)
-        isSaved = viewModel.isPostSaved(post.id)
+        viewModel.incrementPostViewCount(post.id)
+    }
+
+    if (isMuted) {
+        // Muted post notice banner or hidden
+        return
     }
 
     Card(
@@ -621,24 +752,57 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                     }
                 }
 
-                // Delete own posts
-                if (post.username == currentUser?.username) {
-                    var menuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More")
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
+                // Options Menu (MoreVert)
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        if (post.username == currentUser?.username) {
+                            DropdownMenuItem(
+                                text = { Text(strings.editPostCaption) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showEditCaptionDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                            )
                             DropdownMenuItem(
                                 text = { Text(strings.deletePostLabel) },
                                 onClick = {
                                     menuExpanded = false
                                     viewModel.deletePost(post)
                                 },
-                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text(strings.reportPost) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showReportDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Flag, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("${strings.block} @${post.username}") },
+                                onClick = {
+                                    menuExpanded = false
+                                    showBlockConfirmDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null, tint = Color.Red) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("${strings.mute} @${post.username}") },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.muteUser(post.username)
+                                    android.widget.Toast.makeText(context, "@${post.username} (${strings.mute})", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.VolumeOff, contentDescription = null) }
                             )
                         }
                     }
@@ -654,12 +818,9 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                     .pointerInput(post.id) {
                         detectTapGestures(
                             onDoubleTap = {
+                                viewModel.toggleLike(post.id)
+                                showHeartAnim = true
                                 coroutineScope.launch {
-                                    if (!isLiked) {
-                                        viewModel.toggleLike(post.id)
-                                        isLiked = true
-                                    }
-                                    showHeartAnim = true
                                     delay(800)
                                     showHeartAnim = false
                                 }
@@ -685,20 +846,15 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                 }
             }
 
-            // Interactive Buttons (Like, Comment, Save)
+            // Interactive Buttons (Like, Comment, Share, Save)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            viewModel.toggleLike(post.id)
-                            isLiked = !isLiked
-                        }
-                    },
+                    onClick = { viewModel.toggleLike(post.id) },
                     modifier = Modifier.testTag("like_button_${post.id}")
                 ) {
                     Icon(
@@ -715,15 +871,24 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                     Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = "Comments")
                 }
 
+                IconButton(
+                    onClick = {
+                        val shareIntent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(android.content.Intent.EXTRA_TEXT, "${post.caption}\n\n- Posted by @${post.username} on Barta App")
+                            type = "text/plain"
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, strings.share))
+                    },
+                    modifier = Modifier.testTag("share_button_${post.id}")
+                ) {
+                    Icon(Icons.Outlined.Share, contentDescription = "Share")
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            viewModel.toggleSave(post.id)
-                            isSaved = !isSaved
-                        }
-                    },
+                    onClick = { viewModel.toggleSave(post.id) },
                     modifier = Modifier.testTag("save_button_${post.id}")
                 ) {
                     Icon(
@@ -734,17 +899,38 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                 }
             }
 
-            // Like / Comment statistics
+            // Like / Comment / View statistics
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 2.dp)
             ) {
-                Text(
-                    text = "${post.likeCount} ${strings.doubleTapTip.split(" ").last()}", // dynamic likes label
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${post.likeCount} ${strings.doubleTapTip.split(" ").last()}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${post.viewCount} ${strings.views}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Row(modifier = Modifier.padding(vertical = 4.dp)) {
                     Text(
@@ -772,6 +958,63 @@ fun PostCard(viewModel: BartaViewModel, post: Post, strings: AppStrings) {
                 }
             }
         }
+    }
+
+    // Dialogs
+    if (showReportDialog) {
+        ReportDialog(
+            title = strings.reportPost,
+            strings = strings,
+            onDismiss = { showReportDialog = false },
+            onSubmit = { reason, details ->
+                viewModel.reportPost(post.id, reason, details)
+                android.widget.Toast.makeText(context, strings.reportSubmitted, android.widget.Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    if (showBlockConfirmDialog) {
+        BlockConfirmDialog(
+            username = post.username,
+            profilePicture = post.userProfilePicture,
+            strings = strings,
+            onDismiss = { showBlockConfirmDialog = false },
+            onConfirm = {
+                viewModel.blockUser(post.username)
+                android.widget.Toast.makeText(context, "@${post.username} blocked", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showEditCaptionDialog) {
+        var editCaptionText by remember { mutableStateOf(post.caption) }
+        AlertDialog(
+            onDismissRequest = { showEditCaptionDialog = false },
+            title = { Text(strings.editPostCaption, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editCaptionText,
+                    onValueChange = { editCaptionText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.editPostCaption(post, editCaptionText)
+                        showEditCaptionDialog = false
+                    }
+                ) {
+                    Text(strings.save)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditCaptionDialog = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
     }
 }
 
@@ -874,18 +1117,11 @@ fun CreatePostScreen(viewModel: BartaViewModel, strings: AppStrings) {
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            try {
-                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val source = ImageDecoder.createSource(context.contentResolver, it)
-                    ImageDecoder.decodeBitmap(source)
-                } else {
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+            coroutineScope.launch {
+                val scaled = viewModel.decodeAndResizeUri(it, 640)
+                if (scaled != null) {
+                    selectedBitmap = scaled
                 }
-                // Precompress and bound dimensions to keep offline Base64 store efficient
-                val scaled = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
-                selectedBitmap = scaled
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -1003,7 +1239,7 @@ fun Icon(imageVector: androidx.compose.ui.graphics.vector.ImageVector, contentDe
 @Composable
 fun ReelsScreen(viewModel: BartaViewModel, strings: AppStrings) {
     val posts by viewModel.allPosts.collectAsState()
-    val reels = posts.filter { it.isVideo }
+    val reels = remember(posts) { posts.filter { it.isVideo } }
     val coroutineScope = rememberCoroutineScope()
 
     if (reels.isEmpty()) {
@@ -1116,24 +1352,27 @@ fun ProfileScreen(
 ) {
     if (user == null) return
 
+    val observedUser by viewModel.repository.observeUser(user.username).collectAsState(initial = user)
+    val activeUser = observedUser ?: user
+
     val posts by viewModel.allPosts.collectAsState()
     val savedPosts by viewModel.savedPosts.collectAsState()
 
-    val myPosts = posts.filter { it.username == user.username }
-    val followCount by viewModel.getFollowersCount(user.username).collectAsState(initial = user.followersCount)
-    val followingCount by viewModel.getFollowingCount(user.username).collectAsState(initial = user.followingCount)
+    val myPosts = remember(posts, activeUser.username) { posts.filter { it.username == activeUser.username } }
+    val followCount by viewModel.getFollowersCount(activeUser.username).collectAsState(initial = activeUser.followersCount)
+    val followingCount by viewModel.getFollowingCount(activeUser.username).collectAsState(initial = activeUser.followingCount)
 
     var isEditProfileOpen by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) } // 0 = My Posts, 1 = Saved, 2 = About Me
 
     val coroutineScope = rememberCoroutineScope()
-    var isFollowing by remember { mutableStateOf(false) }
+    
+    // Real-time flow for follow status
+    val isFollowing by viewModel.isFollowingFlow(activeUser.username).collectAsState(initial = false)
 
-    LaunchedEffect(user.username) {
-        if (!isOwnProfile) {
-            isFollowing = viewModel.isFollowingUser(user.username)
-        }
-    }
+    var showFollowersListForUser by remember { mutableStateOf<String?>(null) }
+    var showFollowingListForUser by remember { mutableStateOf<String?>(null) }
+    var showUnfollowConfirmForUser by remember { mutableStateOf<User?>(null) }
 
     Column(
         modifier = Modifier
@@ -1160,7 +1399,7 @@ fun ProfileScreen(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                 ) {
-                    BartaMediaLoader(mediaPath = user.profilePicture, modifier = Modifier.fillMaxSize())
+                    BartaMediaLoader(mediaPath = activeUser.profilePicture, modifier = Modifier.fillMaxSize())
                 }
 
                 // Stats row
@@ -1171,8 +1410,16 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     ProfileStatItem(count = myPosts.size, label = strings.myPosts.split(" ").last())
-                    ProfileStatItem(count = followCount, label = strings.followers)
-                    ProfileStatItem(count = followingCount, label = strings.following)
+                    ProfileStatItem(
+                        count = followCount,
+                        label = strings.followers,
+                        onClick = { showFollowersListForUser = activeUser.username }
+                    )
+                    ProfileStatItem(
+                        count = followingCount,
+                        label = strings.following,
+                        onClick = { showFollowingListForUser = activeUser.username }
+                    )
                 }
             }
 
@@ -1183,12 +1430,12 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.Start
             ) {
-                Text(text = user.fullName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(text = "@${user.username}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = user.bio, fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
-                if (user.aboutSection.isNotEmpty()) {
+                Text(text = activeUser.fullName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(text = "@${activeUser.username}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = activeUser.bio, fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
+                if (activeUser.aboutSection.isNotEmpty()) {
                     Text(
-                        text = "📍 " + user.aboutSection,
+                        text = "📍 " + activeUser.aboutSection,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
@@ -1213,9 +1460,10 @@ fun ProfileScreen(
             } else {
                 Button(
                     onClick = {
-                        coroutineScope.launch {
-                            viewModel.toggleFollowUser(user.username)
-                            isFollowing = !isFollowing
+                        if (isFollowing) {
+                            showUnfollowConfirmForUser = activeUser
+                        } else {
+                            viewModel.followUser(activeUser.username)
                         }
                     },
                     modifier = Modifier
@@ -1336,11 +1584,11 @@ fun ProfileScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(text = strings.aboutSection, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "🎂 ${strings.dob}: ${user.dob}", fontSize = 14.sp)
+                        Text(text = "🎂 ${strings.dob}: ${activeUser.dob}", fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "📱 ${strings.phone}: ${user.phoneNumber}", fontSize = 14.sp)
+                        Text(text = "📱 ${strings.phone}: ${activeUser.phoneNumber}", fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "✍️ Bio: ${user.bio}", fontSize = 14.sp)
+                        Text(text = "✍️ Bio: ${activeUser.bio}", fontSize = 14.sp)
                     }
                 }
             }
@@ -1351,19 +1599,327 @@ fun ProfileScreen(
     if (isEditProfileOpen && isOwnProfile) {
         EditProfileDialog(
             viewModel = viewModel,
-            user = user,
+            user = activeUser,
             strings = strings,
             onDismiss = { isEditProfileOpen = false }
+        )
+    }
+
+    // Followers list dialog
+    val followersUser = showFollowersListForUser
+    if (followersUser != null) {
+        FollowListDialog(
+            viewModel = viewModel,
+            username = followersUser,
+            showFollowers = true,
+            strings = strings,
+            onDismiss = { showFollowersListForUser = null },
+            onUserClick = { clickedUser ->
+                viewModel.viewUserProfile(clickedUser)
+            }
+        )
+    }
+
+    // Following list dialog
+    val followingUser = showFollowingListForUser
+    if (followingUser != null) {
+        FollowListDialog(
+            viewModel = viewModel,
+            username = followingUser,
+            showFollowers = false,
+            strings = strings,
+            onDismiss = { showFollowingListForUser = null },
+            onUserClick = { clickedUser ->
+                viewModel.viewUserProfile(clickedUser)
+            }
+        )
+    }
+
+    // Unfollow Confirmation dialog
+    val unfollowUser = showUnfollowConfirmForUser
+    if (unfollowUser != null) {
+        UnfollowConfirmDialog(
+            username = unfollowUser.username,
+            profilePicture = unfollowUser.profilePicture,
+            strings = strings,
+            onDismiss = { showUnfollowConfirmForUser = null },
+            onConfirm = {
+                viewModel.unfollowUser(unfollowUser.username)
+            }
         )
     }
 }
 
 @Composable
-fun ProfileStatItem(count: Int, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+fun ProfileStatItem(count: Int, label: String, onClick: (() -> Unit)? = null) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = if (onClick != null) {
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onClick() }
+                .padding(8.dp)
+        } else {
+            Modifier.padding(8.dp)
+        }
+    ) {
         Text(text = count.toString(), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
         Text(text = label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+fun FollowListDialog(
+    viewModel: BartaViewModel,
+    username: String,
+    showFollowers: Boolean,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onUserClick: (User) -> Unit
+) {
+    val followers by viewModel.getFollowersList(username).collectAsState(initial = emptyList())
+    val following by viewModel.getFollowingList(username).collectAsState(initial = emptyList())
+    val currentUser by viewModel.currentUser.collectAsState()
+    
+    val userList = if (showFollowers) followers else following
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredList = remember(userList, searchQuery) {
+        if (searchQuery.isBlank()) {
+            userList
+        } else {
+            userList.filter {
+                it.username.contains(searchQuery, ignoreCase = true) ||
+                        it.fullName.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.background,
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header with title and close button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showFollowers) strings.followersList else strings.followingList,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 20.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = strings.cancel,
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(strings.search, fontSize = 14.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("follow_list_search_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (filteredList.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = if (showFollowers) Icons.Default.PeopleOutline else Icons.Default.PersonOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = if (showFollowers) strings.emptyFollowers else strings.emptyFollowing,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        items(filteredList) { userItem ->
+                            val isMe = currentUser?.username == userItem.username
+                            val isFollowingItem by viewModel.isFollowingFlow(userItem.username).collectAsState(initial = false)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onUserClick(userItem)
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Avatar
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                                ) {
+                                    BartaMediaLoader(mediaPath = userItem.profilePicture, modifier = Modifier.fillMaxSize())
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                // User details
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = userItem.fullName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onBackground
+                                    )
+                                    Text(
+                                        text = "@${userItem.username}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                // Follow/Unfollow Action Button
+                                if (!isMe) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.toggleFollowUser(userItem.username)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isFollowingItem) {
+                                                MaterialTheme.colorScheme.surfaceVariant
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            }
+                                        ),
+                                        modifier = Modifier.defaultMinSize(minWidth = 80.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isFollowingItem) strings.unfollow else strings.follow,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = if (isFollowingItem) {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            } else {
+                                                Color.White
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UnfollowConfirmDialog(
+    username: String,
+    profilePicture: String,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    BartaMediaLoader(mediaPath = profilePicture, modifier = Modifier.fillMaxSize())
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "@$username",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+        },
+        text = {
+            Text(
+                text = strings.confirmUnfollow,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                fontSize = 14.sp
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                }
+            ) {
+                Text(strings.unfollow, color = Color.Red, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(strings.cancel)
+            }
+        }
+    )
 }
 
 // --- EDIT PROFILE DIALOG ---
@@ -1385,16 +1941,11 @@ fun EditProfileDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            try {
-                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val source = ImageDecoder.createSource(context.contentResolver, it)
-                    ImageDecoder.decodeBitmap(source)
-                } else {
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+            coroutineScope.launch {
+                val scaled = viewModel.decodeAndResizeUri(it, 300)
+                if (scaled != null) {
+                    newBitmap = scaled
                 }
-                newBitmap = Bitmap.createScaledBitmap(bitmap, 300, 300, true)
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -1484,12 +2035,18 @@ fun SettingsDialog(
     onDismiss: () -> Unit
 ) {
     val currentLanguage by viewModel.currentLanguage.collectAsState()
+    val isPrivateAccount by viewModel.isPrivateAccount.collectAsState()
+    val isRestrictedAccount by viewModel.isRestrictedAccount.collectAsState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(strings.settings, fontWeight = FontWeight.Bold) },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 // Language selector Row
                 Row(
                     modifier = Modifier
@@ -1504,7 +2061,7 @@ fun SettingsDialog(
                 ) {
                     Icon(Icons.Default.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(strings.languageToggleLabel, fontWeight = FontWeight.SemiBold)
                         Text(
                             text = if (currentLanguage == Language.BANGLA) "Active: বাংলা" else "Active: English",
@@ -1512,6 +2069,54 @@ fun SettingsDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                // Private Account Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(strings.privateAccount, fontWeight = FontWeight.SemiBold)
+                    }
+                    Switch(
+                        checked = isPrivateAccount,
+                        onCheckedChange = { viewModel.togglePrivateAccount() }
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                // Restrict Account Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(strings.restrictAccount, fontWeight = FontWeight.SemiBold)
+                    }
+                    Switch(
+                        checked = isRestrictedAccount,
+                        onCheckedChange = { viewModel.toggleRestrictAccount() }
+                    )
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
@@ -1541,7 +2146,145 @@ fun SettingsDialog(
     )
 }
 
-// --- NOTIFICATIONS DIALOG ---
+// --- NOTIFICATIONS DIALOG & SCREEN ---
+@Composable
+fun NotificationsScreen(
+    viewModel: BartaViewModel,
+    strings: AppStrings
+) {
+    val notifications by viewModel.notifications.collectAsState()
+    val unreadCount by viewModel.unreadNotificationCount.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.markNotificationsAsRead()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = strings.notifications,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (unreadCount > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape
+                    ) {
+                        Text(
+                            text = unreadCount.toString(),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            if (notifications.isNotEmpty()) {
+                TextButton(onClick = { viewModel.clearAllNotifications() }) {
+                    Text(strings.clearAll, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        }
+
+        if (notifications.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 80.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Outlined.NotificationsNone,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = strings.notificationsEmpty,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(notifications, key = { it.id }) { notification ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (!notification.isRead) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                            ) {
+                                BartaMediaLoader(mediaPath = notification.senderProfilePicture, modifier = Modifier.fillMaxSize())
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "@${notification.senderUsername} ",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = notification.text,
+                                        fontSize = 13.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = android.text.format.DateUtils.getRelativeTimeSpanString(notification.timestamp).toString(),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun NotificationsDialog(
     viewModel: BartaViewModel,
@@ -1551,35 +2294,48 @@ fun NotificationsDialog(
     val notifications by viewModel.notifications.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.clearNotifications()
+        viewModel.markNotificationsAsRead()
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(strings.notifications, fontWeight = FontWeight.Bold) },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(strings.notifications, fontWeight = FontWeight.Bold)
+                if (notifications.isNotEmpty()) {
+                    TextButton(onClick = { viewModel.clearAllNotifications() }) {
+                        Text(strings.clearAll, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
         text = {
             if (notifications.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
+                        .height(140.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("কোনো নতুন বিজ্ঞপ্তি নেই।")
+                    Text(strings.notificationsEmpty, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(300.dp),
+                        .height(320.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(notifications) { notification ->
+                    items(notifications, key = { it.id }) { notification ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (!notification.isRead) MaterialTheme.colorScheme.primary.copy(alpha = 0.05f) else Color.Transparent,
+                                    if (!notification.isRead) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
                                     RoundedCornerShape(8.dp)
                                 )
                                 .padding(8.dp),
@@ -1587,7 +2343,7 @@ fun NotificationsDialog(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
                             ) {
                                 BartaMediaLoader(mediaPath = notification.senderProfilePicture, modifier = Modifier.fillMaxSize())
@@ -1700,7 +2456,9 @@ fun CommentsOverlay(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        items(comments) { comment ->
+                        items(comments, key = { it.id }) { comment ->
+                            val isCommentLiked by viewModel.observeIsCommentLiked(comment.id).collectAsState(initial = false)
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.Top
@@ -1713,7 +2471,7 @@ fun CommentsOverlay(
                                     BartaMediaLoader(mediaPath = comment.userProfilePicture, modifier = Modifier.fillMaxSize())
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(text = "@${comment.username} ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                         Text(
@@ -1724,6 +2482,40 @@ fun CommentsOverlay(
                                         )
                                     }
                                     Text(text = comment.commentText, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+
+                                    // Reply button
+                                    Text(
+                                        text = strings.replyLabel,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .padding(top = 4.dp)
+                                            .clickable {
+                                                commentText = "@${comment.username} "
+                                            }
+                                    )
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    IconButton(
+                                        onClick = { viewModel.toggleCommentLike(comment.id) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isCommentLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Like comment",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (isCommentLiked) InstaPink else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (comment.likeCount > 0) {
+                                        Text(
+                                            text = comment.likeCount.toString(),
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1742,7 +2534,7 @@ fun StoryViewerOverlay(
     onDismiss: () -> Unit
 ) {
     val stories by viewModel.activeStories.collectAsState()
-    val userStories = stories.filter { it.username == username }
+    val userStories = remember(stories, username) { stories.filter { it.username == username } }
 
     if (userStories.isEmpty()) {
         onDismiss()
@@ -1881,4 +2673,144 @@ fun StoryViewerOverlay(
             }
         }
     }
+}
+
+// --- REPORT DIALOG ---
+@Composable
+fun ReportDialog(
+    title: String,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onSubmit: (reason: String, details: String) -> Unit
+) {
+    val reasons = listOf(
+        strings.reasonSpam,
+        strings.reasonHarassment,
+        strings.reasonInappropriate,
+        strings.reasonFake,
+        strings.reasonOther
+    )
+    var selectedReason by remember { mutableStateOf(reasons[0]) }
+    var details by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = strings.reportReason,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                reasons.forEach { reason ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedReason = reason }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = (selectedReason == reason),
+                            onClick = { selectedReason = reason }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = reason, fontSize = 14.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = details,
+                    onValueChange = { details = it },
+                    placeholder = { Text("বিস্তারিত লিখুন (ঐচ্ছিক)...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSubmit(selectedReason, details)
+                    onDismiss()
+                }
+            ) {
+                Text(strings.submit)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(strings.cancel)
+            }
+        }
+    )
+}
+
+// --- BLOCK CONFIRM DIALOG ---
+@Composable
+fun BlockConfirmDialog(
+    username: String,
+    profilePicture: String,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    BartaMediaLoader(mediaPath = profilePicture, modifier = Modifier.fillMaxSize())
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "${strings.block} @$username",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+        },
+        text = {
+            Text(
+                text = strings.blockUserConfirm,
+                textAlign = TextAlign.Center,
+                fontSize = 14.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text(strings.block, color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(strings.cancel)
+            }
+        }
+    )
 }

@@ -14,9 +14,13 @@ import androidx.room.RoomDatabase
         Notification::class,
         Follow::class,
         SavedPost::class,
-        Like::class
+        Like::class,
+        Report::class,
+        Block::class,
+        Mute::class,
+        CommentLike::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class BartaDatabase : RoomDatabase() {
@@ -28,6 +32,10 @@ abstract class BartaDatabase : RoomDatabase() {
     abstract fun followDao(): FollowDao
     abstract fun savedPostDao(): SavedPostDao
     abstract fun likeDao(): LikeDao
+    abstract fun reportDao(): ReportDao
+    abstract fun blockDao(): BlockDao
+    abstract fun muteDao(): MuteDao
+    abstract fun commentLikeDao(): CommentLikeDao
 
     companion object {
         @Volatile
